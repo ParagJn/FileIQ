@@ -489,6 +489,25 @@ class VectorDBManager:
             self.logger.error(f"Index optimization failed for '{filename}': {e}")
             raise RuntimeError(f"Index optimization failed for '{filename}': {e}")
 
+    def vectors_exist(self, filename):
+        """
+        Check if vector database files already exist for a given filename.
+        Args:
+            filename (str): The file name to check.
+        Returns:
+            bool: True if all required vector files exist, False otherwise.
+        """
+        paths = self.get_vectordb_paths(filename)
+        
+        # Check if all required files exist and are not empty
+        required_files = ['index', 'npy', 'parentmap']
+        for key in required_files:
+            path = paths[key]
+            if not os.path.exists(path) or os.path.getsize(path) == 0:
+                return False
+        
+        return True
+
     def get_vectordb_paths(self, filename):
         """
         Returns a dict of file paths for storing vector DB components for a given filename.
