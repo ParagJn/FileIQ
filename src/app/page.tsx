@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -79,7 +80,7 @@ export default function DocumentQueryPage() {
     switch (currentStep) {
       case 'folderSelection':
         return (
-          <Card className="w-full max-w-lg mx-auto shadow-xl border-t-4 border-google-blue">
+          <Card className="w-full md:w-4/5 mx-auto shadow-xl border-t-4 border-google-blue">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-2xl font-headline">
                 <FolderOpen className="h-7 w-7 text-google-blue" />
@@ -104,7 +105,7 @@ export default function DocumentQueryPage() {
         );
       case 'documentList':
         return (
-          <Card className="w-full max-w-lg mx-auto shadow-xl border-t-4 border-google-blue">
+          <Card className="w-full md:w-4/5 mx-auto shadow-xl border-t-4 border-google-blue">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-2xl font-headline">
                 <ListChecks className="h-7 w-7 text-google-blue" />
@@ -134,7 +135,7 @@ export default function DocumentQueryPage() {
         );
       case 'vectorGeneration':
         return (
-          <Card className="w-full max-w-lg mx-auto shadow-xl border-t-4 border-google-yellow">
+          <Card className="w-full md:w-4/5 mx-auto shadow-xl border-t-4 border-google-yellow">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-2xl font-headline">
                 <Loader2 className="h-7 w-7 text-google-yellow animate-spin" />
@@ -153,7 +154,7 @@ export default function DocumentQueryPage() {
       case 'qaInterface':
         return (
           <>
-            <Card className="w-full max-w-lg mx-auto shadow-xl border-t-4 border-google-green">
+            <Card className="w-full md:w-4/5 mx-auto shadow-xl border-t-4 border-google-green">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-2xl font-headline">
                   <HelpCircle className="h-7 w-7 text-google-green" />
@@ -184,7 +185,7 @@ export default function DocumentQueryPage() {
             </Card>
 
             {(answer || isLoading || error) && (
-              <Card className="w-full max-w-lg mx-auto shadow-xl border-t-4 border-google-red">
+              <Card className="w-full md:w-4/5 mx-auto shadow-xl border-t-4 border-google-red mt-8">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-2xl font-headline">
                     <MessageSquare className="h-7 w-7 text-google-red" />
