@@ -10,7 +10,7 @@ export function AppHeader() {
         </Link>
         <Link href="/" className="no-underline hover:no-underline">
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold font-headline text-primary">
-            Document Vector Query
+            FileIQ
           </h1>
         </Link>
       </div>

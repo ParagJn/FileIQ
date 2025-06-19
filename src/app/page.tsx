@@ -11,7 +11,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { generateAnswer } from '@/ai/flows/generate-answer';
 import { simulatedDocuments, SimulatedDocument } from '@/data/simulated-documents';
-import { Loader2, FileText, AlertTriangle, CheckCircle2, HelpCircle, FolderOpen, ListChecks, MessageSquare, Send, Sparkles } from 'lucide-react';
+import { Loader2, FileText, AlertTriangle, CheckCircle2, HelpCircle, FolderOpen, ListChecks, MessageSquare, Send, Sparkles, RefreshCw, Trash2, FileUp, Power } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+
 
 type Step = 'folderSelection' | 'documentList' | 'vectorGeneration' | 'qaInterface';
 
@@ -221,6 +223,39 @@ export default function DocumentQueryPage() {
     }
   };
 
+  const AdminConsole = () => (
+    <Card className="w-full md:w-4/5 mx-auto shadow-xl mt-12 border-t-4 border-muted-foreground">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-xl font-headline text-muted-foreground">
+          <Sparkles className="h-6 w-6" />
+          Admin Console
+        </CardTitle>
+        <CardDescription>
+          Manage document processing and application state.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <Button variant="outline" className="flex items-center justify-start gap-2 py-6 text-base">
+          <RefreshCw className="h-5 w-5 text-blue-500" />
+          <span>Refresh Vectors</span>
+        </Button>
+        <Button variant="outline" className="flex items-center justify-start gap-2 py-6 text-base">
+          <Trash2 className="h-5 w-5 text-red-500" />
+          <span>Delete Vectors</span>
+        </Button>
+        <Button variant="outline" className="flex items-center justify-start gap-2 py-6 text-base">
+          <FileUp className="h-5 w-5 text-green-500" />
+          <span>Re-load Files</span>
+        </Button>
+        <Button variant="outline" className="flex items-center justify-start gap-2 py-6 text-base">
+          <Power className="h-5 w-5 text-yellow-500" />
+          <span>Restart App</span>
+        </Button>
+      </CardContent>
+    </Card>
+  );
+
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <AppHeader />
@@ -228,6 +263,12 @@ export default function DocumentQueryPage() {
         <div className="space-y-8 w-full">
           {renderStepContent()}
         </div>
+        {currentStep === 'qaInterface' && (
+          <>
+            <Separator className="my-12" />
+            <AdminConsole />
+          </>
+        )}
       </main>
       <AppFooter />
     </div>

@@ -3,7 +3,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: 'Document Vector Query',
+  title: 'FileIQ',
   description: 'Query your documents using AI',
 };
 
