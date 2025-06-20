@@ -24,32 +24,42 @@ app.add_middleware(
 class VectorRequest(BaseModel):
     filename: str
     folder: str = "."
+    case_id: str = "default"
 
 class QuestionRequest(BaseModel):
     question: str
     folder: str = "."
+    case_id: str = "default"
+
+class CaseRequest(BaseModel):
+    case_id: str
 
 # Create a documents folder if it doesn't exist
 DOCUMENTS_FOLDER = os.path.join(os.path.dirname(__file__), "documents")
 os.makedirs(DOCUMENTS_FOLDER, exist_ok=True)
 
 @app.post("/upload-and-generate-vectors")
-async def upload_and_generate_vectors(file: UploadFile = File(...)):
+async def upload_and_generate_vectors(file: UploadFile = File(...), case_id: str = Form("default")):
     try:
-        # Save uploaded file
-        file_path = os.path.join(DOCUMENTS_FOLDER, file.filename)
+        # Create case-specific folder
+        case_folder = os.path.join(DOCUMENTS_FOLDER, case_id)
+        os.makedirs(case_folder, exist_ok=True)
+        
+        # Save uploaded file in case-specific folder
+        file_path = os.path.join(case_folder, file.filename)
         with open(file_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
         
-        # Check if vectors already exist
-        manager = VectorDBManager(folder_path=DOCUMENTS_FOLDER)
+        # Check if vectors already exist for this case
+        manager = VectorDBManager(folder_path=case_folder, case_id=case_id)
         if manager.vectors_exist(file.filename):
             return {
                 "success": True, 
                 "filename": file.filename, 
+                "case_id": case_id,
                 "already_vectorized": True,
-                "message": f"Vectors for '{file.filename}' already exist. Skipping vectorization."
+                "message": f"Vectors for '{file.filename}' in case '{case_id}' already exist. Skipping vectorization."
             }
         
         # Generate vectors if they don't exist
@@ -58,8 +68,9 @@ async def upload_and_generate_vectors(file: UploadFile = File(...)):
         return {
             "success": success, 
             "filename": file.filename, 
+            "case_id": case_id,
             "already_vectorized": False,
-            "message": f"Vectors for '{file.filename}' generated successfully." if success else f"Failed to generate vectors for '{file.filename}'."
+            "message": f"Vectors for '{file.filename}' in case '{case_id}' generated successfully." if success else f"Failed to generate vectors for '{file.filename}' in case '{case_id}'."
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -67,22 +78,28 @@ async def upload_and_generate_vectors(file: UploadFile = File(...)):
 @app.post("/generate-vectors")
 def generate_vectors(req: VectorRequest):
     try:
-        manager = VectorDBManager(folder_path=req.folder)
+        # Create case-specific folder
+        case_folder = os.path.join(DOCUMENTS_FOLDER, req.case_id)
+        os.makedirs(case_folder, exist_ok=True)
+        
+        manager = VectorDBManager(folder_path=case_folder, case_id=req.case_id)
         
         # Check if vectors already exist
         if manager.vectors_exist(req.filename):
             return {
                 "success": True, 
+                "case_id": req.case_id,
                 "already_vectorized": True,
-                "message": f"Vectors for '{req.filename}' already exist. Skipping vectorization."
+                "message": f"Vectors for '{req.filename}' in case '{req.case_id}' already exist. Skipping vectorization."
             }
         
         # Generate vectors if they don't exist
         success = manager.build_vector_db(req.filename)
         return {
             "success": success, 
+            "case_id": req.case_id,
             "already_vectorized": False,
-            "message": f"Vectors for '{req.filename}' generated successfully." if success else f"Failed to generate vectors for '{req.filename}'."
+            "message": f"Vectors for '{req.filename}' in case '{req.case_id}' generated successfully." if success else f"Failed to generate vectors for '{req.filename}' in case '{req.case_id}'."
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -121,9 +138,9 @@ def get_enhanced_response(question: str, all_results: dict) -> str:
         
         Please provide a comprehensive answer that:
         1. Directly addresses the question using information from the documents
-        2. Adds relevant context or explanations from your knowledge when helpful
-        3. Is well-structured and professional
-        4. Clearly indicates what information comes from the documents vs. general knowledge
+        2. Adds relevant context or explanations only when explicitly asked by the user
+        3. Is well-structured in json format
+        4. Build on the provided context without making assumptions
         
         Format your response in a clear, professional manner suitable for a business document analysis system."""
         
@@ -141,10 +158,13 @@ def get_enhanced_response(question: str, all_results: dict) -> str:
 @app.post("/ask-question")
 async def ask_question(req: QuestionRequest):
     try:
-        # Initialize VectorDBManager
-        manager = VectorDBManager(folder_path=DOCUMENTS_FOLDER)
+        # Get case-specific folder
+        case_folder = os.path.join(DOCUMENTS_FOLDER, req.case_id)
         
-        # Search across all vector databases
+        # Initialize VectorDBManager for the specific case
+        manager = VectorDBManager(folder_path=case_folder, case_id=req.case_id)
+        
+        # Search across all vector databases for this case
         all_results = manager.search_all_databases(
             query=req.question,
             k=3,
@@ -190,27 +210,36 @@ async def ask_question(req: QuestionRequest):
         return {
             "success": True,
             "answer": enhanced_response,
-            "sources": sources[:5],  # Limit to top 5 sources
+            "sources": sources[:3],  # Limit to top 5 sources
             "context_found": True,
             "total_sources": total_results,
-            "message": f"Answer generated using context from {len(all_results)} document(s) with {total_results} relevant sections."
+            "case_id": req.case_id,
+            "message": f"Answer generated using context from {len(all_results)} document(s) with {total_results} relevant sections for case '{req.case_id}'."
         }
         
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 @app.post("/refresh-all-vectors")
-async def refresh_all_vectors():
-    """Refresh/rebuild vectors for all documents in the documents folder."""
+async def refresh_all_vectors(req: CaseRequest):
+    """Refresh/rebuild vectors for all documents in a specific case folder."""
     try:
-        manager = VectorDBManager(folder_path=DOCUMENTS_FOLDER)
+        case_folder = os.path.join(DOCUMENTS_FOLDER, req.case_id)
         
-        # Get all supported files in the documents folder
+        if not os.path.exists(case_folder):
+            return {
+                "success": True,
+                "message": f"No documents found for case '{req.case_id}'.",
+                "files_processed": []
+            }
+        
+        manager = VectorDBManager(folder_path=case_folder, case_id=req.case_id)
+        
         supported_extensions = ['.pdf', '.docx', '.txt', '.json']
         files_to_process = []
         
-        if os.path.exists(DOCUMENTS_FOLDER):
-            for file in os.listdir(DOCUMENTS_FOLDER):
+        if os.path.exists(case_folder):
+            for file in os.listdir(case_folder):
                 if any(file.lower().endswith(ext) for ext in supported_extensions):
                     files_to_process.append(file)
         
@@ -248,7 +277,7 @@ async def refresh_all_vectors():
         
         return {
             "success": True,
-            "message": f"Refreshed {len(files_to_process)} document(s).",
+            "message": f"Refreshed {len(files_to_process)} document(s) for case '{req.case_id}'.",
             "files_processed": results
         }
         
@@ -256,15 +285,24 @@ async def refresh_all_vectors():
         return {"success": False, "error": str(e)}
 
 @app.post("/delete-all-vectors")
-async def delete_all_vectors():
-    """Delete all vector databases."""
+async def delete_all_vectors(req: CaseRequest):
+    """Delete all vector databases for a specific case."""
     try:
-        manager = VectorDBManager(folder_path=DOCUMENTS_FOLDER)
+        case_folder = os.path.join(DOCUMENTS_FOLDER, req.case_id)
         
-        # Get all files in documents folder
+        if not os.path.exists(case_folder):
+            return {
+                "success": True,
+                "message": f"No vectors found for case '{req.case_id}'.",
+                "files_deleted": []
+            }
+        
+        manager = VectorDBManager(folder_path=case_folder, case_id=req.case_id)
+        
+        # Get all files in case folder
         files_deleted = []
-        if os.path.exists(DOCUMENTS_FOLDER):
-            for file in os.listdir(DOCUMENTS_FOLDER):
+        if os.path.exists(case_folder):
+            for file in os.listdir(case_folder):
                 if manager.vectors_exist(file):
                     try:
                         paths = manager.get_vectordb_paths(file)
@@ -281,7 +319,7 @@ async def delete_all_vectors():
         
         return {
             "success": True,
-            "message": f"Deleted vectors for {len(files_deleted)} document(s).",
+            "message": f"Deleted vectors for {len(files_deleted)} document(s) in case '{req.case_id}'.",
             "files_deleted": files_deleted
         }
         

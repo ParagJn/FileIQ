@@ -62,8 +62,9 @@ class VectorDBManager:
         db_manager.build_vector_db("mydoc.pdf")
         results = db_manager.search_vectors("mydoc.pdf", "What is the summary?")
     """
-    def __init__(self, folder_path, vector_data_dir=None, model_name='all-MiniLM-L6-v2', batch_size=32, cache_size=1000):
+    def __init__(self, folder_path, vector_data_dir=None, model_name='all-MiniLM-L6-v2', batch_size=32, cache_size=1000, case_id="default"):
         self.folder_path = folder_path
+        self.case_id = case_id
         self.vector_data_dir = vector_data_dir or os.path.join(folder_path, 'vector-data')
         os.makedirs(self.vector_data_dir, exist_ok=True)
         self.model_name = model_name
@@ -516,7 +517,8 @@ class VectorDBManager:
         Returns:
             dict: Paths for index, chunks, parent map, and embeddings.
         """
-        base = os.path.join(self.vector_data_dir, f"{filename}_vectordb")
+        # Include case_id in the filename to make it case-specific
+        base = os.path.join(self.vector_data_dir, f"{self.case_id}_{filename}_vectordb")
         return {
             'index': base + ".index",
             'npy': base + ".npy",
@@ -942,8 +944,11 @@ class VectorDBManager:
             vector_dbs = []
             for filename in os.listdir(self.vector_data_dir):
                 if filename.endswith('_vectordb.index'):
-                    original_filename = filename.replace('_vectordb.index', '')
-                    vector_dbs.append(original_filename)
+                    # Extract original filename from case-specific naming
+                    # Format: {case_id}_{original_filename}_vectordb.index
+                    if filename.startswith(f"{self.case_id}_"):
+                        original_filename = filename.replace(f"{self.case_id}_", "").replace('_vectordb.index', '')
+                        vector_dbs.append(original_filename)
             
             if not vector_dbs:
                 self.logger.warning("No vector databases found")

@@ -13,6 +13,7 @@ import { simulatedDocuments, SimulatedDocument } from '@/data/simulated-document
 import { Loader2, FileText, AlertTriangle, CheckCircle2, HelpCircle, FolderOpen, ListChecks, MessageSquare, Send, Sparkles, RefreshCw, Trash2, FileUp, Power } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { TerminalProgressModal } from './components/TerminalProgressModal';
+import { CaseIdModal } from './components/CaseIdModal';
 import { config, getApiUrl } from '@/config/config';
 
 
@@ -38,8 +39,21 @@ export default function DocumentQueryPage() {
   const [vectorsExist, setVectorsExist] = useState(true); // Track if vectors exist for Q&A button state
   const [progressModalTitle, setProgressModalTitle] = useState('Vector Generation Progress');
 
+  // Case ID state
+  const [caseId, setCaseId] = useState<string>('');
+  const [caseIdModalOpen, setCaseIdModalOpen] = useState(false);
+
   // Admin button handlers
   const handleRefreshVectors = async () => {
+    if (!caseId) {
+      toast({
+        title: 'Case ID Required',
+        description: 'Please load documents with a Case ID first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsRefreshingVectors(true);
     setProgressModalTitle('Vector Refresh Progress');
     setProgressModalOpen(true);
@@ -57,7 +71,9 @@ export default function DocumentQueryPage() {
       
       // Step 2: Make API call to get files and start refresh
       const res = await fetch(getApiUrl('refreshAllVectors'), {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ case_id: caseId })
       });
       
       const data = await res.json();
@@ -162,11 +178,22 @@ export default function DocumentQueryPage() {
   };
 
   const handleDeleteVectors = async () => {
+    if (!caseId) {
+      toast({
+        title: 'Case ID Required',
+        description: 'Please load documents with a Case ID first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsDeletingVectors(true);
     
     try {
       const res = await fetch(getApiUrl('deleteAllVectors'), {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ case_id: caseId })
       });
       
       const data = await res.json();
@@ -207,6 +234,8 @@ export default function DocumentQueryPage() {
     setProgressItems([]);
     setProgressModalTitle('Vector Generation Progress');
     setVectorsExist(true);
+    setCaseId(''); // Reset Case ID
+    setCaseIdModalOpen(false);
     
     if (vectorTimeout) {
       clearTimeout(vectorTimeout);
@@ -221,12 +250,23 @@ export default function DocumentQueryPage() {
   };
 
   const handleLoadSampleDocuments = () => {
-    setCurrentStep('documentList');
-    toast({
-      title: "Sample Documents Loaded",
-      description: "Review the list of documents and proceed to generate vectors.",
-      className: "bg-secondary border-google-green",
-    });
+    // Open Case ID modal instead of directly proceeding
+    setCaseIdModalOpen(true);
+  };
+
+  // Handle Case ID submission
+  const handleCaseIdSubmit = (submittedCaseId: string) => {
+    setCaseId(submittedCaseId);
+    setCaseIdModalOpen(false);
+    
+    // Now trigger folder selection
+    setTimeout(() => {
+      handleActualFolderSelection();
+    }, 100); // Small delay to ensure modal closes first
+  };
+
+  const handleCaseIdCancel = () => {
+    setCaseIdModalOpen(false);
   };
 
   // Helper to run Python script for each file
@@ -243,6 +283,7 @@ export default function DocumentQueryPage() {
         // Create FormData and upload file to FastAPI
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('case_id', caseId);
         
         const res = await fetch(getApiUrl('uploadAndGenerateVectors'), {
           method: 'POST',
@@ -306,17 +347,22 @@ export default function DocumentQueryPage() {
       toast({ title: "Validation Error", description: "Please enter a question.", variant: "destructive" });
       return;
     }
+    
+    if (!caseId) {
+      toast({ title: "Case ID Required", description: "Please load documents with a Case ID first.", variant: "destructive" });
+      return;
+    }
+    
     setIsLoading(true);
     setAnswer('');
     setError(null);
     try {
-      // Call FastAPI backend for Q&A
       const res = await fetch(getApiUrl('askQuestion'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           question: question,
-          folder: '/Users/paragjain/dev-works/Prototypes/FileIQ/backend/documents'
+          case_id: caseId
         })
       });
       
@@ -462,7 +508,7 @@ export default function DocumentQueryPage() {
                 />
                 <Button 
                   onClick={handleAskQuestion} 
-                  disabled={isLoading || !vectorsExist} 
+                  disabled={isLoading || !vectorsExist || !caseId} 
                   className="w-full" 
                   size="lg"
                 >
@@ -471,7 +517,7 @@ export default function DocumentQueryPage() {
                   ) : (
                     <Send className="mr-2 h-5 w-5" />
                   )}
-                  Get Answer {!vectorsExist && '(No Vectors)'}
+                  Get Answer {!vectorsExist && '(No Vectors)'} {!caseId && '(No Case ID)'}
                 </Button>
               </CardContent>
             </Card>
@@ -560,7 +606,7 @@ export default function DocumentQueryPage() {
           variant="outline" 
           className="flex items-center justify-start gap-2 py-6 text-base"
           onClick={handleRefreshVectors}
-          disabled={isRefreshingVectors || isDeletingVectors}
+          disabled={isRefreshingVectors || isDeletingVectors || !caseId}
         >
           <RefreshCw className={`h-5 w-5 text-blue-500 ${isRefreshingVectors ? 'animate-spin' : ''}`} />
           <span>Refresh Vectors</span>
@@ -569,7 +615,7 @@ export default function DocumentQueryPage() {
           variant="outline" 
           className="flex items-center justify-start gap-2 py-6 text-base"
           onClick={handleDeleteVectors}
-          disabled={isRefreshingVectors || isDeletingVectors}
+          disabled={isRefreshingVectors || isDeletingVectors || !caseId}
         >
           <Trash2 className="h-5 w-5 text-red-500" />
           <span>Delete Vectors</span>
@@ -598,6 +644,12 @@ export default function DocumentQueryPage() {
 
   // Helper to prompt folder selection and read files
   const handleSelectFolder = async () => {
+    // First, prompt for Case ID
+    setCaseIdModalOpen(true);
+  };
+
+  // New function to handle actual folder selection after Case ID is set
+  const handleActualFolderSelection = async () => {
     try {
       // @ts-ignore
       const dirHandle = await window.showDirectoryPicker();
@@ -619,7 +671,7 @@ export default function DocumentQueryPage() {
       setCurrentStep('documentList');
       toast({
         title: 'Folder Loaded',
-        description: `${files.length} document(s) found.`,
+        description: `${files.length} document(s) found for Case ID: ${caseId}`,
         className: 'bg-secondary border-google-green',
       });
     } catch (e) {
@@ -649,6 +701,18 @@ export default function DocumentQueryPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <AppHeader />
+      
+      {/* Case ID Display */}
+      {caseId && (
+        <div className="border-b bg-muted/30 px-4 py-2">
+          <div className="container mx-auto flex justify-end">
+            <span className="text-sm font-medium text-muted-foreground">
+              Case ID: <span className="text-foreground">{caseId}</span>
+            </span>
+          </div>
+        </div>
+      )}
+      
       <main className="flex-grow container mx-auto px-4 py-8 sm:py-12">
         <div className="space-y-8 w-full">
           {renderStepContent()}
@@ -664,6 +728,11 @@ export default function DocumentQueryPage() {
           onClose={handleCloseProgressModal} 
           items={progressItems} 
           title={progressModalTitle}
+        />
+        <CaseIdModal
+          open={caseIdModalOpen}
+          onClose={handleCaseIdCancel}
+          onSubmit={handleCaseIdSubmit}
         />
       </main>
       <AppFooter />
