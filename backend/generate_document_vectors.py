@@ -29,6 +29,7 @@ from typing import Dict, List, Tuple, Optional, Any
 import logging
 from functools import lru_cache
 from tqdm import tqdm
+from AzureAIConnection_IBM import AzureAIConnection
 
 class VectorDBManager:
     """
@@ -980,6 +981,28 @@ class VectorDBManager:
         except Exception as e:
             self.logger.error(f"Error in search_all_databases: {e}")
             return all_results
+
+    def _generate_summary_with_ai(self, content: str, filename: str) -> str:
+        """Generate a summary using Azure AI instead of Claude."""
+        prompt = f"""Please provide a concise summary of the following document content. 
+        Focus on the main topics, key information, and important details that would be useful for document search and retrieval.
+        
+        Document: {filename}
+        Content: {content[:3000]}...
+        
+        Summary:"""
+        
+        try:
+            azure_client = AzureAIConnection()
+            response = azure_client.generate_response(
+                prompt=prompt,
+                system_content="You are a helpful assistant that provides accurate, concise summaries of document content.",
+                max_tokens=500
+            )
+            return response
+        except Exception as e:
+            print(f"Error generating AI summary: {e}")
+            return f"Document: {filename}\nContent preview: {content[:200]}..."
 
 def test_vector_db_with_claude():
     """

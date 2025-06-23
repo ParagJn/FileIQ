@@ -43,3 +43,10 @@ next-env.d.ts
 # firebase
 firebase-debug.log
 firestore-debug.log
+
+# documents 
+documents/
+
+# python runtime
+*.pyc
+__pycache__/

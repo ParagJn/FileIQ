@@ -2,10 +2,10 @@ from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from generate_document_vectors import VectorDBManager
+from AzureAIConnection_IBM import AzureAIConnection
 import os
 import shutil
 from dotenv import load_dotenv
-import anthropic
 
 # Load environment variables
 load_dotenv()
@@ -33,6 +33,11 @@ class QuestionRequest(BaseModel):
 
 class CaseRequest(BaseModel):
     case_id: str
+
+class ClaimAnalysisRequest(BaseModel):
+    question: str
+    folder: str = "."
+    case_id: str = "default"
 
 # Create a documents folder if it doesn't exist
 DOCUMENTS_FOLDER = os.path.join(os.path.dirname(__file__), "documents")
@@ -104,20 +109,17 @@ def generate_vectors(req: VectorRequest):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-# Initialize Claude client
-def get_claude_client():
+# Initialize Azure AI client
+def get_azure_ai_client():
     try:
-        anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
-        if not anthropic_api_key:
-            raise Exception("ANTHROPIC_API_KEY not found in .env file")
-        return anthropic.Anthropic(api_key=anthropic_api_key)
+        return AzureAIConnection()
     except Exception as e:
-        raise Exception(f"Error initializing Claude API: {e}")
+        raise Exception(f"Error initializing Azure AI: {e}")
 
 def get_enhanced_response(question: str, all_results: dict) -> str:
-    """Generate enhanced response using Claude Sonnet with vector context."""
+    """Generate enhanced response using Azure AI with vector context."""
     try:
-        claude_client = get_claude_client()
+        azure_client = get_azure_ai_client()
         
         # Combine context from all databases
         all_chunks = []
@@ -144,13 +146,16 @@ def get_enhanced_response(question: str, all_results: dict) -> str:
         
         Format your response in a clear, professional manner suitable for a business document analysis system."""
         
-        message = claude_client.messages.create(
-            model="claude-3-5-haiku-20241022",
-            max_tokens=1000,
-            messages=[{"role": "user", "content": prompt}]
+        response = azure_client.generate_structured_response(
+            prompt=prompt,
+            system_content="You are an expert in processing Insurance Claims. " \
+            "Analyze the provided document context and extract relevant information to structure a comprehensive claim review summary." \
+            " Ensure your response is well-structured and professional. " \
+            "If any data is missing or unclear, then give ouput as N/A.",
+            max_tokens=1000
         )
         
-        return message.content[0].text
+        return response
         
     except Exception as e:
         return f"Error generating enhanced response: {e}"
@@ -174,18 +179,18 @@ async def ask_question(req: QuestionRequest):
         total_results = sum(len(results) for results in all_results.values())
         
         if total_results == 0:
-            # No relevant context found, ask Claude without document context
+            # No relevant context found, ask Azure AI without document context
             try:
-                claude_client = get_claude_client()
-                message = claude_client.messages.create(
-                    model="claude-3-5-haiku-20241022",
-                    max_tokens=500,
-                    messages=[{"role": "user", "content": f"Please answer this question using your general knowledge: {req.question}"}]
+                azure_client = get_azure_ai_client()
+                response = azure_client.generate_structured_response(
+                    prompt=f"Please analyze this question and provide a structured claim review response: {req.question}",
+                    system_content="You are an expert in processing Insurance Claims. Provide a structured response even when analyzing general questions.",
+                    max_tokens=500
                 )
                 
                 return {
                     "success": True,
-                    "answer": message.content[0].text,
+                    "answer": response,
                     "sources": [],
                     "context_found": False,
                     "message": "No relevant information found in uploaded documents. Answer provided using general knowledge."
@@ -215,6 +220,70 @@ async def ask_question(req: QuestionRequest):
             "total_sources": total_results,
             "case_id": req.case_id,
             "message": f"Answer generated using context from {len(all_results)} document(s) with {total_results} relevant sections for case '{req.case_id}'."
+        }
+        
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/analyze-claim-structured")
+async def analyze_claim_structured(req: ClaimAnalysisRequest):
+    """Analyze documents for structured claim review using the defined schema."""
+    try:
+        # Get case-specific folder
+        case_folder = os.path.join(DOCUMENTS_FOLDER, req.case_id)
+        
+        # Initialize VectorDBManager for the specific case
+        manager = VectorDBManager(folder_path=case_folder, case_id=req.case_id)
+        
+        # Search across all vector databases for this case
+        all_results = manager.search_all_databases(
+            query=req.question,
+            k=3,
+            score_threshold=0.3
+        )
+        
+        # Combine context from all databases
+        all_chunks = []
+        for db_name, results in all_results.items():
+            for chunk, score, _ in results[:2]:  # Take top 2 from each DB
+                all_chunks.append(f"[From {db_name}] {chunk}")
+        
+        context = "\n\n".join(all_chunks[:5])  # Limit to top 5 overall
+        
+        prompt = f"""Analyze the following insurance claim documents and provide a structured review summary.
+        
+        Document Context:
+        {context}
+        
+        Analysis Request: {req.question}
+        
+        Please extract and structure all relevant information from the documents according to the claim review format."""
+        
+        # Use structured response method
+        azure_client = get_azure_ai_client()
+        structured_response = azure_client.generate_structured_response(
+            prompt=prompt,
+            system_content="You are an expert in processing Insurance Claims. Extract information from the provided documents and structure it according to the claim review schema.",
+            max_tokens=2000
+        )
+        
+        # Prepare source information
+        sources = []
+        for db_name, results in all_results.items():
+            if results:
+                for chunk, score, _ in results[:2]:
+                    sources.append({
+                        "document": db_name,
+                        "relevance_score": round(float(score), 3),
+                        "preview": chunk[:200] + "..." if len(chunk) > 200 else chunk
+                    })
+        
+        return {
+            "success": True,
+            "structured_analysis": structured_response,
+            "sources": sources[:5],
+            "case_id": req.case_id,
+            "message": f"Structured claim analysis completed for case '{req.case_id}' using {len(all_results)} document(s)."
         }
         
     except Exception as e:
